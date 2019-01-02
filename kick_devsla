@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+pushd ~/Library/LaunchAgents
+launchctl unload com.asana.devsla.plist
+launchctl load com.asana.devsla.plist
