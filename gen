@@ -1,0 +1,270 @@
+#!/usr/bin/env python
+
+import os
+from string import Template
+import subprocess
+import argparse
+import urllib
+import json
+from ruamel import yaml
+
+class CurlCommandBuilder(object):
+
+    pathTemplate=Template("https://app.asana.com/api/1.0$segment")
+
+    def __init__(self):
+        self.addHeader("Authorization: Bearer $ASANA_PERSONAL_ACCESS_TOKEN")
+        self.segment = ""
+
+    @property
+    def headers(self):
+        if not hasattr(self, '_headers'):
+            self._headers = []
+        return self._headers
+
+    def addHeader(self, header):
+        if not hasattr(self, '_headers'):
+            self._headers = []
+        self._headers.append(header)
+        return self._headers
+
+    @property
+    def cookies(self):
+        if not hasattr(self, '_cookies'):
+            self._cookies = []
+        return self._cookies
+
+    def addCookie(self, cookie):
+        if not hasattr(self, '_cookies'):
+            self._cookies = []
+        self._cookies.append(cookie)
+
+    @property
+    def options(self):
+        if not hasattr(self, '_options'):
+            self._options = {}
+        return self._options
+
+    def addOption(self, option, value=None):
+        if not hasattr(self, '_options'):
+            self._options = {}
+        self._options[option] = value
+
+    @property
+    def payloadRaw(self):
+        if not hasattr(self, '_payloadRaw'):
+            self._payloadRaw = {}
+        return self._payloadRaw
+
+    @payloadRaw.setter
+    def payloadRaw(self, payload):
+        self._payloadRaw = payload
+
+    @property
+    def payloadJson(self):
+        if self.payloadRaw:
+            return json.loads(self.payloadRaw)
+        else:
+            return {}
+
+    @payloadJson.setter
+    def payloadJson(self, json_str):
+        #Parse first to check correctness and pretty print.
+        jsonValue = json.loads(json_str)
+        print(json.dumps(jsonValue, sort_keys=True, indent=2, separators=(',', ': ')))
+
+    @property
+    def payloadYaml(self):
+        return yaml.safe_dump(self.payloadRaw)
+
+    @payloadYaml.setter
+    def payloadYaml(self, yaml_str):
+        yamlValue = yaml.safe_load(yaml_str)
+        if type(yamlValue) == str:
+            raise Exception('Yaml loaded as string: check it. Does it have spaces after all colons?')
+        self.payloadRaw = json.dumps(yamlValue, sort_keys=True, indent=2, separators=(',', ': '))
+
+
+    @property
+    def curlOptions(self):
+        if not hasattr(self, '_curlOptions'):
+            self._curlOptions = {}
+        return self._curlOptions
+
+    def addCurlOption(self, option, value=None):
+        self.curlOptions[option] = value
+
+    @property
+    def urlencodedData(self):
+        if not hasattr(self, '_urlencodedData'):
+            self._urlencodedData = []
+        return self._urlencodedData
+
+    def addUrlencodedData(self, data):
+        self.urlencodedData.append(data)
+
+
+    @property
+    def verb(self):
+        if not hasattr(self, '_verb'):
+            self._verb = 'GET'
+        return self._verb
+
+    @verb.setter
+    def verb(self, verb):
+        self._verb = verb
+
+
+    def setBeta(self):
+        self.addCookie("cluster=beta")
+
+    def setFastApi(self, enabled):
+        self.addHeader("Asana-Fast-Api: %s" % str(enabled).lower())
+
+    def setProxy(self):
+        self.addCurlOption('--proxy', 'https://localhost:8080')
+
+    def setFormDataContentType(self):
+        self.addHeader("Content-Type: application/x-www-form-urlencoded")
+
+
+    @property
+    def segment(self):
+        return self._segment
+
+    @segment.setter
+    def segment(self, segment):
+        self._segment = segment
+
+    def buildCommand(self):
+        command = "curl -v --request " + self.verb + " "
+        for co in self.curlOptions:
+            if self.curlOptions[co] == None:
+                command = command + co + " "
+            else:
+                command = command + co + " \"" + self.curlOptions[co] + "\" "
+        # Process this before serializing headers
+        if self.payloadRaw:
+            self.addHeader("Content-Type: application/json")
+        for h in self.headers:
+            command = command + "--header \"" + h + "\" "
+        for c in self.cookies:
+            command = command + "--cookie \"" + c + "\" "
+        if self.verb == 'GET' or self.verb == 'DELETE':
+            # Translate the payload into query params for GET or DELETE.
+            # TODO: I'm not sure we can do this for every time; perhaps add first-class option for url params
+            for o in self.payloadJson:
+                if self.payloadJson[o]:
+                    self.addOption(o, self.payloadJson[o])
+                else:
+                    self.addOption(o)
+            self.payload = {}
+            command = command + '"' + CurlCommandBuilder.pathTemplate.substitute(segment = self.segment)
+            if self.options:
+                standard_string = urllib.urlencode(self.options)
+                # Standards-compliant strings have e.g. opt_fields= (the empty string)
+                # This means we have to jump a hoop for the colloqial use of just a key - very common, but
+                # non-standard, and the Python stdlib maintainers have a stick up their butt that None should
+                # simply be stringified. Luckily, as long as we don't actually pass the string None to any
+                # field, we can just sub (otherwise we'd have to double-check that None Python values are stripped)
+                colloquial_string = standard_string.replace("=None", '')
+                command = command + '?' + colloquial_string
+            command = command + '"'
+        elif (self.verb == 'POST' or self.verb == 'PUT'):
+            # PUT and POST can have both query options and payload
+            command = command + '"' + CurlCommandBuilder.pathTemplate.substitute(segment = self.segment)
+            if self.options:
+                standard_string = urllib.urlencode(self.options)
+                # Standards-compliant strings have e.g. opt_fields= (the empty string)
+                # This means we have to jump a hoop for the colloqial use of just a key - very common, but
+                # non-standard, and the Python stdlib maintainers have a stick up their butt that None should
+                # simply be stringified. Luckily, as long as we don't actually pass the string None to any
+                # field, we can just sub (otherwise we'd have to double-check that None Python values are stripped)
+                colloquial_string = standard_string.replace("=None", '')
+                command = command + '?' + colloquial_string
+            command = command + '"'
+        else:
+            raise Exception('Unrecognized verb ' + self.verb)
+        if self.payloadRaw:
+            command += " -d \\\n'"
+            command += self.payloadRaw
+            command += "'"
+        if self.urlencodedData:
+            for u in self.urlencodedData:
+                command += ' --data-urlencode \''
+                command += u
+                command += "'"
+        return command
+
+
+
+parser = argparse.ArgumentParser(description = 'Construct a cURL example')
+parser.add_argument('-d', '--data', type=str)
+parser.add_argument('-y', '--data-yaml', type=str)
+parser.add_argument('-r', '--data-raw', type=str)
+# Turn _on_ beta cluster on flag
+parser.add_argument('-b', '--beta', action='store_true')
+# Turn _off_ fast api on flag
+parser.add_argument('-s', '--fast-api', action='store_true')
+parser.add_argument('-l', '--limit', type=int)
+parser.add_argument('-p', '--no-pretty', action='store_true')
+parser.add_argument('-e', '--no-execute', action='store_true')
+parser.add_argument('-x', '--proxy', action='store_true')
+parser.add_argument('-m', '--html-verb', type=str)
+parser.add_argument('-f', '--form_data', action="append", type=str)
+parser.add_argument('-o', '--option', action="append", type=str)
+parser.add_argument('-q', '--quiet', action='store_true')
+parser.add_argument('-H', '--header', action="append", type=str)
+parser.add_argument('url_segment', nargs='?')
+
+args = parser.parse_args()
+b = CurlCommandBuilder()
+
+if args.beta:
+    b.setBeta()
+if args.fast_api:
+    b.setFastApi(False)
+if args.form_data:
+    b.setFormDataContentType()
+    for u in args.form_data:
+        b.addUrlencodedData(u)
+if args.limit:
+    b.addOption('limit', args.limit)
+if not args.no_pretty:
+    b.addOption('opt_pretty')
+if args.option:
+    for o in args.option:
+        k, v = tuple(o.split('=')) if '=' in o else (o, None)
+        b.addOption(k, v)
+if args.proxy:
+    b.setProxy()
+if args.html_verb:
+    b.verb = args.html_verb.upper()
+if args.data:
+    b.payloadJson = args.data
+    if b.verb is None:
+        b.verb = 'POST'
+if args.data_yaml:
+    b.payloadYaml = args.data_yaml
+    if b.verb is None:
+        b.verb = 'POST'
+if args.data_raw:
+    b.payloadRaw = args.data_raw
+    if b.verb is None:
+        b.verb = 'POST'
+if args.url_segment is None:
+    b.segment = "/tasks/$ASANA_TEST_TASK"
+else:
+    b.segment = args.url_segment
+if args.header:
+    for header in args.header:
+        b.addHeader(header)
+
+
+command = b.buildCommand()
+
+if not args.quiet:
+    print args
+    print command
+if not args.no_execute:
+    subprocess.call(command, shell=True)

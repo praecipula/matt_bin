@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+
+# First arg: input filename
+# Second arg: start seconds
+# Third arg: end seconds
+
+# Generate a pallete for the gif
+ffmpeg -y -i "$1" -ss "$2" -to "$3" -vf "fps=10,scale=640:-1:flags=lanczos,palettegen" palette.png
+
+ffmpeg -y -i "$1" -i palette.png -ss "$2" -to "$3" -filter_complex "fps=15,scale=1280:-1:flags=lanczos[x];[x][1:v]paletteuse" "$1".gif
