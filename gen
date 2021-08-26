@@ -4,7 +4,7 @@ import os
 from string import Template
 import subprocess
 import argparse
-import urllib
+import urllib.parse
 import json
 from ruamel import yaml
 
@@ -161,7 +161,7 @@ class CurlCommandBuilder(object):
             self.payload = {}
             command = command + '"' + CurlCommandBuilder.pathTemplate.substitute(segment = self.segment)
             if self.options:
-                standard_string = urllib.urlencode(self.options)
+                standard_string = urllib.parse.urlencode(self.options)
                 # Standards-compliant strings have e.g. opt_fields= (the empty string)
                 # This means we have to jump a hoop for the colloqial use of just a key - very common, but
                 # non-standard, and the Python stdlib maintainers have a stick up their butt that None should
@@ -174,7 +174,7 @@ class CurlCommandBuilder(object):
             # PUT and POST can have both query options and payload
             command = command + '"' + CurlCommandBuilder.pathTemplate.substitute(segment = self.segment)
             if self.options:
-                standard_string = urllib.urlencode(self.options)
+                standard_string = urllib.parse.urlencode(self.options)
                 # Standards-compliant strings have e.g. opt_fields= (the empty string)
                 # This means we have to jump a hoop for the colloqial use of just a key - very common, but
                 # non-standard, and the Python stdlib maintainers have a stick up their butt that None should
@@ -264,7 +264,7 @@ if args.header:
 command = b.buildCommand()
 
 if not args.quiet:
-    print args
-    print command
+    print(args)
+    print(command)
 if not args.no_execute:
     subprocess.call(command, shell=True)
