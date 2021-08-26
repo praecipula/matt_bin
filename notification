@@ -1,0 +1,37 @@
+#!/usr/bin/env python3
+#coding=utf-8
+import argparse
+import pdb
+from subprocess import Popen, PIPE
+
+
+
+parser = argparse.ArgumentParser(description = 'Send a notification on this machine')
+# One of these will create or find the "current" sprint based on dates, etc...
+parser.add_argument('title', type=str)
+parser.add_argument('message', type=str)
+#parser.add_argument('-s', '--score_latest_sprint', type=int)
+#parser.add_argument('-d', '--destination_project')
+#parser.add_argument('-r', '--remove', action='store_true', help="Remove from the source project")
+#parser.add_argument('-a', '--add', action='store_true', help="Multi-home to the source and dest project")
+#parser.add_argument('-m', '--move', action='store_true', help="Move from the source project to the dest project")
+#parser.add_argument('-t', '--test', action='store_true')
+#
+args = parser.parse_args()
+
+#if args.create_sprint:
+#    sprint_header = SectionData()
+#    sprint_header.sprint_count = args.create_sprint[0]
+#    sprint_header.start = SectionData.parsed_date_argument(args.create_sprint[1])
+#    sprint_header.end = SectionData.parsed_date_argument(args.create_sprint[2])
+#    print(sprint_header)
+#
+#if args.score_latest_sprint:
+#    print(f"Scoring sprint {args.score_latest_sprint}")
+#    sprint_data = SectionData.sprint_number(args.score_latest_sprint)
+#    sprint_data.score()
+
+script = 'display notification "{}" with title "{}" subtitle "More text"'.format(args.message, args.title)
+process = Popen(['osascript', '-'], stdin=PIPE, stdout=PIPE, stderr=PIPE, encoding='utf8')
+stdout, stderr = process.communicate(script)
+print (process.returncode, stdout, stderr)
